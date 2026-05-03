@@ -72,6 +72,55 @@ func inferContainerSecurityContext(isvc *inferencev1alpha1.InferenceService) *co
 	}
 }
 
+// deploymentSelectorLabels returns the immutable subset of operator-managed
+// labels used for Deployment.Spec.Selector.MatchLabels. Kubernetes treats
+// the selector as immutable after creation, so any label that can change
+// over the InferenceService's lifetime (notably model.Name when the user
+// edits spec.modelRef) must NOT appear here. The model label still ships
+// on the Pod template + Deployment metadata for kubectl filtering; only
+// the selector is restricted.
+//
+// See #301 for the silent-update bug this avoids: putting modelRef into
+// the selector made the field effectively immutable, with no error
+// surfaced to the user, just an apiserver "field is immutable" error
+// looping in the controller logs.
+func deploymentSelectorLabels(isvc *inferencev1alpha1.InferenceService) map[string]string {
+	return map[string]string{
+		"app":                           isvc.Name,
+		"inference.llmkube.dev/service": isvc.Name,
+	}
+}
+
+// mergePodLabels combines operator-managed labels with the user's
+// spec.podLabels for use on the Pod template metadata. Operator-managed keys
+// always win on collision so the Deployment selector (which uses the
+// operator-only set, not this merged result) keeps matching the Pods it owns.
+// Returns a fresh map; callers may safely mutate either input afterwards.
+func mergePodLabels(operator, user map[string]string) map[string]string {
+	merged := make(map[string]string, len(operator)+len(user))
+	for k, v := range user {
+		merged[k] = v
+	}
+	for k, v := range operator {
+		merged[k] = v // operator wins on collision
+	}
+	return merged
+}
+
+// copyMap returns a fresh shallow copy of m, or nil when m is empty. Used to
+// pass spec.podAnnotations through to PodTemplateSpec.ObjectMeta.Annotations
+// without sharing storage with the user's spec.
+func copyMap(m map[string]string) map[string]string {
+	if len(m) == 0 {
+		return nil
+	}
+	out := make(map[string]string, len(m))
+	for k, v := range m {
+		out[k] = v
+	}
+	return out
+}
+
 func (r *InferenceServiceReconciler) constructDeployment(
 	isvc *inferencev1alpha1.InferenceService,
 	model *inferencev1alpha1.Model,
@@ -194,11 +243,15 @@ func (r *InferenceServiceReconciler) constructDeployment(
 		Spec: appsv1.DeploymentSpec{
 			Replicas: &replicas,
 			Selector: &metav1.LabelSelector{
-				MatchLabels: labels,
+				// Selector uses the immutable subset only; the model label
+				// is allowed to change when the user edits spec.modelRef
+				// and must not be matched on. See #301.
+				MatchLabels: deploymentSelectorLabels(isvc),
 			},
 			Template: corev1.PodTemplateSpec{
 				ObjectMeta: metav1.ObjectMeta{
-					Labels: labels,
+					Labels:      mergePodLabels(labels, isvc.Spec.PodLabels),
+					Annotations: copyMap(isvc.Spec.PodAnnotations),
 				},
 				Spec: corev1.PodSpec{
 					SecurityContext:    inferPodSecurityContext(isvc),
@@ -206,6 +259,7 @@ func (r *InferenceServiceReconciler) constructDeployment(
 					Containers:         []corev1.Container{container},
 					Volumes:            storageConfig.volumes,
 					PriorityClassName:  r.resolvePriorityClassName(isvc),
+					RuntimeClassName:   isvc.Spec.RuntimeClassName,
 					ImagePullSecrets:   isvc.Spec.ImagePullSecrets,
 					EnableServiceLinks: resolveEnableServiceLinks(backend),
 				},

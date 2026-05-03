@@ -403,6 +403,19 @@ spec:
                   - name
                   type: object
                 type: array
+              evictionProtection:
+                description: |-
+                  EvictionProtection marks this service as ineligible for memory-pressure
+                  eviction by the metal-agent watchdog. Use this for production workloads
+                  that should never be silently stopped under memory pressure, even when
+                  they are the lowest-priority option. The agent's per-process pickEvictionTarget
+                  excludes protected processes from the eviction-candidate set; the
+                  MemoryPressure status condition is still patched on protected services
+                  for operator visibility.
+
+                  Has no effect when --eviction-enabled is unset on the metal-agent or
+                  for non-llama-server runtimes (oMLX, Ollama). Defaults to false.
+                type: boolean
               extraArgs:
                 description: |-
                   ExtraArgs provides additional command-line arguments passed directly to the
@@ -504,9 +517,10 @@ spec:
                 type: object
               parallelSlots:
                 description: |-
-                  ParallelSlots sets the number of concurrent request slots for the llama.cpp server (--parallel flag).
-                  Each slot can process one request independently, enabling concurrent inference.
-                  Higher values use more memory. If not specified, llama.cpp defaults to 1.
+                  ParallelSlots sets the number of concurrent request slots for the llama.cpp
+                  server (--parallel flag). Each slot processes one request independently;
+                  higher values use more KV cache memory. If not specified, the operator
+                  omits --parallel and llama.cpp picks an auto value (currently 4).
                 format: int32
                 maximum: 64
                 minimum: 1
@@ -552,6 +566,27 @@ spec:
                       Quantize4Bit enables NF4 4-bit quantization for reduced VRAM usage (~9.6 GB vs ~14 GB).
                       Requires the bitsandbytes package in the container image.
                     type: boolean
+                type: object
+              podAnnotations:
+                additionalProperties:
+                  type: string
+                description: |-
+                  PodAnnotations are merged into the inference Pod's metadata.annotations.
+                  Use this to tag Pods for downstream tooling (cost attribution, service
+                  mesh routing, custom admission controllers) without those tools needing
+                  to know about LLMKube's CRD schema. Pure passthrough; the operator
+                  itself does not set any annotations on inference Pods today.
+                type: object
+              podLabels:
+                additionalProperties:
+                  type: string
+                description: |-
+                  PodLabels are merged into the inference Pod's metadata.labels alongside
+                  the operator-managed labels (`app`, `inference.llmkube.dev/model`,
+                  `inference.llmkube.dev/service`). Operator-managed keys take precedence
+                  on collision so the Deployment selector stays in sync with the Pods it
+                  owns. The Deployment selector itself uses only the operator-managed
+                  labels and is immutable, so changing PodLabels later is safe.
                 type: object
               podSecurityContext:
                 description: |-
@@ -1334,6 +1369,19 @@ spec:
                 - vllm
                 - tgi
                 - generic
+                type: string
+              runtimeClassName:
+                description: |-
+                  RuntimeClassName selects a Kubernetes RuntimeClass for the inference Pod.
+                  Most commonly set to "nvidia" on clusters where the NVIDIA Container
+                  Runtime is not configured as the cluster default. Without it, GPU pods
+                  schedule onto the GPU node but never get the device files bind-mounted,
+                  and the container fails at runtime with "no CUDA-capable device is
+                  detected". Maps directly to PodSpec.RuntimeClassName.
+
+                  Most clusters running the NVIDIA GPU Operator with the default toolkit
+                  env do not need this set; it is a safety hatch for clusters where the
+                  runtime configuration is non-default.
                 type: string
               securityContext:
                 description: SecurityContext defines container-level security attributes

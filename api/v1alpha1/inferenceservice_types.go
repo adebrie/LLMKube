@@ -75,6 +75,36 @@ type InferenceServiceSpec struct {
 	// +optional
 	NodeSelector map[string]string `json:"nodeSelector,omitempty"`
 
+	// PodAnnotations are merged into the inference Pod's metadata.annotations.
+	// Use this to tag Pods for downstream tooling (cost attribution, service
+	// mesh routing, custom admission controllers) without those tools needing
+	// to know about LLMKube's CRD schema. Pure passthrough; the operator
+	// itself does not set any annotations on inference Pods today.
+	// +optional
+	PodAnnotations map[string]string `json:"podAnnotations,omitempty"`
+
+	// PodLabels are merged into the inference Pod's metadata.labels alongside
+	// the operator-managed labels (`app`, `inference.llmkube.dev/model`,
+	// `inference.llmkube.dev/service`). Operator-managed keys take precedence
+	// on collision so the Deployment selector stays in sync with the Pods it
+	// owns. The Deployment selector itself uses only the operator-managed
+	// labels and is immutable, so changing PodLabels later is safe.
+	// +optional
+	PodLabels map[string]string `json:"podLabels,omitempty"`
+
+	// RuntimeClassName selects a Kubernetes RuntimeClass for the inference Pod.
+	// Most commonly set to "nvidia" on clusters where the NVIDIA Container
+	// Runtime is not configured as the cluster default. Without it, GPU pods
+	// schedule onto the GPU node but never get the device files bind-mounted,
+	// and the container fails at runtime with "no CUDA-capable device is
+	// detected". Maps directly to PodSpec.RuntimeClassName.
+	//
+	// Most clusters running the NVIDIA GPU Operator with the default toolkit
+	// env do not need this set; it is a safety hatch for clusters where the
+	// runtime configuration is non-default.
+	// +optional
+	RuntimeClassName *string `json:"runtimeClassName,omitempty"`
+
 	// ContextSize sets the context window size for the llama.cpp server (-c flag).
 	// Larger values allow processing longer inputs but require more memory.
 	// If not specified, llama.cpp uses its default (typically 512 or 2048).
@@ -86,9 +116,10 @@ type InferenceServiceSpec struct {
 	// +optional
 	ContextSize *int32 `json:"contextSize,omitempty"`
 
-	// ParallelSlots sets the number of concurrent request slots for the llama.cpp server (--parallel flag).
-	// Each slot can process one request independently, enabling concurrent inference.
-	// Higher values use more memory. If not specified, llama.cpp defaults to 1.
+	// ParallelSlots sets the number of concurrent request slots for the llama.cpp
+	// server (--parallel flag). Each slot processes one request independently;
+	// higher values use more KV cache memory. If not specified, the operator
+	// omits --parallel and llama.cpp picks an auto value (currently 4).
 	// +kubebuilder:validation:Minimum=1
 	// +kubebuilder:validation:Maximum=64
 	// +optional
@@ -280,6 +311,19 @@ type InferenceServiceSpec struct {
 	// +kubebuilder:default=normal
 	// +optional
 	Priority string `json:"priority,omitempty"`
+
+	// EvictionProtection marks this service as ineligible for memory-pressure
+	// eviction by the metal-agent watchdog. Use this for production workloads
+	// that should never be silently stopped under memory pressure, even when
+	// they are the lowest-priority option. The agent's per-process pickEvictionTarget
+	// excludes protected processes from the eviction-candidate set; the
+	// MemoryPressure status condition is still patched on protected services
+	// for operator visibility.
+	//
+	// Has no effect when --eviction-enabled is unset on the metal-agent or
+	// for non-llama-server runtimes (oMLX, Ollama). Defaults to false.
+	// +optional
+	EvictionProtection *bool `json:"evictionProtection,omitempty"`
 
 	// PriorityClassName allows specifying a custom Kubernetes PriorityClass.
 	// Takes precedence over the Priority field if set.

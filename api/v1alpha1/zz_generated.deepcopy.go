@@ -259,6 +259,25 @@ func (in *InferenceServiceSpec) DeepCopyInto(out *InferenceServiceSpec) {
 			(*out)[key] = val
 		}
 	}
+	if in.PodAnnotations != nil {
+		in, out := &in.PodAnnotations, &out.PodAnnotations
+		*out = make(map[string]string, len(*in))
+		for key, val := range *in {
+			(*out)[key] = val
+		}
+	}
+	if in.PodLabels != nil {
+		in, out := &in.PodLabels, &out.PodLabels
+		*out = make(map[string]string, len(*in))
+		for key, val := range *in {
+			(*out)[key] = val
+		}
+	}
+	if in.RuntimeClassName != nil {
+		in, out := &in.RuntimeClassName, &out.RuntimeClassName
+		*out = new(string)
+		**out = **in
+	}
 	if in.ContextSize != nil {
 		in, out := &in.ContextSize, &out.ContextSize
 		*out = new(int32)
@@ -380,6 +399,11 @@ func (in *InferenceServiceSpec) DeepCopyInto(out *InferenceServiceSpec) {
 		in, out := &in.ImagePullSecrets, &out.ImagePullSecrets
 		*out = make([]v1.LocalObjectReference, len(*in))
 		copy(*out, *in)
+	}
+	if in.EvictionProtection != nil {
+		in, out := &in.EvictionProtection, &out.EvictionProtection
+		*out = new(bool)
+		**out = **in
 	}
 	if in.PodSecurityContext != nil {
 		in, out := &in.PodSecurityContext, &out.PodSecurityContext
