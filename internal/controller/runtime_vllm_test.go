@@ -45,9 +45,10 @@ func containsArg(args []string, flag, value string) bool {
 }
 
 // ptrString, ptrBool, ptrInt32 are local helpers so tests read naturally.
-func ptrString(s string) *string { return &s }
-func ptrBool(b bool) *bool       { return &b }
-func ptrInt32(i int32) *int32    { return &i }
+func ptrString(s string) *string    { return &s }
+func ptrBool(b bool) *bool          { return &b }
+func ptrInt32(i int32) *int32       { return &i }
+func ptrFloat64(f float64) *float64 { return &f }
 
 // TestVLLMBuildArgs is the single table-driven test that covers every new
 // agentic-coding flag and the "not emitted when unset/false" counterpart.
@@ -57,6 +58,17 @@ func TestVLLMBuildArgs(t *testing.T) {
 	backend := &VLLMBackend{}
 	model := &inferencev1alpha1.Model{
 		ObjectMeta: metav1.ObjectMeta{Name: "test-model", Namespace: "default"},
+	}
+	modelWithGpu := &inferencev1alpha1.Model{
+		Spec: inferencev1alpha1.ModelSpec{
+			Hardware: &inferencev1alpha1.HardwareSpec{
+				GPU: &inferencev1alpha1.GPUSpec{
+					Enabled: true,
+					Count:   1,
+				},
+			},
+		},
+		ObjectMeta: metav1.ObjectMeta{Name: "test-model-gpu", Namespace: "default"},
 	}
 	const modelPath = "/models/test"
 	const port = int32(8000)
@@ -84,8 +96,19 @@ func TestVLLMBuildArgs(t *testing.T) {
 			},
 			// vLLM v0.20+ deprecated --model in favor of a positional argument.
 			// The bare model path appears as args[0]; --model itself must NOT appear.
-			contains:    []flagCheck{{"--host", "0.0.0.0"}, {"--port", "8000"}},
-			notContains: []string{"--model", "--kv-cache-dtype", "--enable-prefix-caching", "--enable-chunked-prefill", "--max-num-batched-tokens", "--attention-backend", "--speculative-model", "--enable-expert-parallel"},
+			contains: []flagCheck{{"--host", "0.0.0.0"}, {"--port", "8000"}},
+			notContains: []string{
+				"--attention-backend",
+				"--cpu-offload-gb",
+				"--enable-chunked-prefill",
+				"--enable-expert-parallel",
+				"--enable-prefix-caching",
+				"--gpu-memory-utilization",
+				"--kv-cache-dtype",
+				"--max-num-batched-tokens",
+				"--model",
+				"--speculative-model",
+			},
 		},
 		{
 			name: "empty config emits only base flags",
@@ -94,7 +117,70 @@ func TestVLLMBuildArgs(t *testing.T) {
 				ModelRef:   "test-model",
 				VLLMConfig: &inferencev1alpha1.VLLMConfig{},
 			},
-			notContains: []string{"--kv-cache-dtype", "--enable-prefix-caching", "--enable-chunked-prefill", "--max-num-batched-tokens", "--speculative-model", "--enable-expert-parallel"},
+			notContains: []string{
+				"--cpu-offload-gb",
+				"--enable-expert-parallel",
+				"--enable-chunked-prefill",
+				"--enable-prefix-caching",
+				"--gpu-memory-utilization",
+				"--kv-cache-dtype",
+				"--max-num-batched-tokens",
+				"--speculative-model",
+			},
+		},
+		{
+			name: "cpuOffloadGB set emits flag if gpu is enabled",
+			spec: &inferencev1alpha1.InferenceServiceSpec{
+				Runtime:    "vllm",
+				ModelRef:   "test-model-gpu",
+				VLLMConfig: &inferencev1alpha1.VLLMConfig{CPUOffloadGB: ptrInt32(4)},
+			},
+			contains: []flagCheck{{"--cpu-offload-gb", "4"}},
+		},
+		{
+			name: "cpuOffloadGB set does not emit flag if gpu is not enabled",
+			spec: &inferencev1alpha1.InferenceServiceSpec{
+				Runtime:    "vllm",
+				ModelRef:   "test-model",
+				VLLMConfig: &inferencev1alpha1.VLLMConfig{CPUOffloadGB: ptrInt32(4)},
+			},
+			notContains: []string{"--cpu-offload-gb"},
+		},
+		{
+			name: "cpuOffloadGB nil does not emit flag",
+			spec: &inferencev1alpha1.InferenceServiceSpec{
+				Runtime:    "vllm",
+				ModelRef:   "test-model",
+				VLLMConfig: &inferencev1alpha1.VLLMConfig{},
+			},
+			notContains: []string{"--cpu-offload-gb"},
+		},
+		{
+			name: "gpuMemoryUtilization set emits flag if gpu is enabled",
+			spec: &inferencev1alpha1.InferenceServiceSpec{
+				Runtime:    "vllm",
+				ModelRef:   "test-model-gpu",
+				VLLMConfig: &inferencev1alpha1.VLLMConfig{GPUMemoryUtilization: ptrFloat64(0.80)},
+			},
+			contains: []flagCheck{{"--gpu-memory-utilization", "0.8"}},
+		},
+		{
+			name: "gpuMemoryUtilization does not emit flag if gpu is not enabled",
+			spec: &inferencev1alpha1.InferenceServiceSpec{
+				Runtime:    "vllm",
+				ModelRef:   "test-model",
+				VLLMConfig: &inferencev1alpha1.VLLMConfig{GPUMemoryUtilization: ptrFloat64(0.80)},
+			},
+			notContains: []string{"--gpu-memory-utilization"},
+		},
+		{
+			name: "gpuMemoryUtilization nil does not emit flag",
+			spec: &inferencev1alpha1.InferenceServiceSpec{
+				Runtime:    "vllm",
+				ModelRef:   "test-model",
+				VLLMConfig: &inferencev1alpha1.VLLMConfig{},
+			},
+			notContains: []string{"--gpu-memory-utilization"},
 		},
 		{
 			name: "kvCacheDtype=auto does not emit flag (vLLM default)",
@@ -347,28 +433,28 @@ func TestVLLMBuildArgs(t *testing.T) {
 				ModelRef:      "test-model",
 				ParallelSlots: ptrInt32(1),
 				VLLMConfig: &inferencev1alpha1.VLLMConfig{
-					TensorParallelSize:   ptrInt32(2),
-					MaxModelLen:          ptrInt32(131072),
-					Quantization:         "fp8",
+					AttentionBackend:     "FLASHINFER",
 					Dtype:                "bfloat16",
-					KVCacheDtype:         ptrString("fp8_e5m2"),
 					EnablePrefixCaching:  ptrBool(true),
 					EnableChunkedPrefill: ptrBool(true),
+					KVCacheDtype:         ptrString("fp8_e5m2"),
+					MaxModelLen:          ptrInt32(131072),
 					MaxNumBatchedTokens:  ptrInt32(8192),
-					AttentionBackend:     "FLASHINFER",
+					Quantization:         "fp8",
+					TensorParallelSize:   ptrInt32(2),
 				},
 			},
 			contains: []flagCheck{
-				{"--tensor-parallel-size", "2"},
-				{"--max-model-len", "131072"},
-				{"--quantization", "fp8"},
+				{"--attention-backend", "FLASHINFER"},
 				{"--dtype", "bfloat16"},
-				{"--kv-cache-dtype", "fp8_e5m2"},
 				{"--enable-prefix-caching", ""},
 				{"--enable-chunked-prefill", ""},
+				{"--kv-cache-dtype", "fp8_e5m2"},
+				{"--max-model-len", "131072"},
 				{"--max-num-batched-tokens", "8192"},
 				{"--max-num-seqs", "1"},
-				{"--attention-backend", "FLASHINFER"},
+				{"--quantization", "fp8"},
+				{"--tensor-parallel-size", "2"},
 			},
 		},
 	}
@@ -379,7 +465,12 @@ func TestVLLMBuildArgs(t *testing.T) {
 				ObjectMeta: metav1.ObjectMeta{Name: "isvc-" + strings.ReplaceAll(tc.name, " ", "-"), Namespace: "default"},
 				Spec:       *tc.spec,
 			}
-			args := backend.BuildArgs(isvc, model, modelPath, port)
+			var args []string
+			if tc.spec.ModelRef == "test-model-gpu" {
+				args = backend.BuildArgs(isvc, modelWithGpu, modelPath, port)
+			} else {
+				args = backend.BuildArgs(isvc, model, modelPath, port)
+			}
 			for _, fc := range tc.contains {
 				if !containsArg(args, fc.flag, fc.value) {
 					t.Errorf("expected %q %q in args, got: %v", fc.flag, fc.value, args)

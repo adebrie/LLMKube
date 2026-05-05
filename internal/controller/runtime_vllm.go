@@ -73,6 +73,7 @@ func (b *VLLMBackend) BuildArgs(isvc *inferencev1alpha1.InferenceService, model 
 	var err error
 
 	cfg := isvc.Spec.VLLMConfig
+	gpuCount := resolveGPUCount(isvc, model)
 	if cfg != nil {
 		args = appendTensorParallelSize(args, cfg.TensorParallelSize)
 		args = appendMaxModelLen(args, cfg.MaxModelLen)
@@ -92,9 +93,25 @@ func (b *VLLMBackend) BuildArgs(isvc *inferencev1alpha1.InferenceService, model 
 			)
 		}
 		args = appendEnableExpertParallel(args, cfg.EnableExpertParallel)
+
+		args, err = appendCPUOffloadGB(args, cfg.CPUOffloadGB, gpuCount)
+		if err != nil {
+			vllmLog.Info(
+				err.Error(),
+				"inferenceService", isvc.Name,
+				"namespace", isvc.Namespace,
+			)
+		}
+		args, err = appendGPUMemoryUtilization(args, cfg.GPUMemoryUtilization, gpuCount)
+		if err != nil {
+			vllmLog.Info(
+				err.Error(),
+				"inferenceService", isvc.Name,
+				"namespace", isvc.Namespace,
+			)
+		}
 	}
 
-	gpuCount := resolveGPUCount(isvc, model)
 	if gpuCount > 1 && (cfg == nil || cfg.TensorParallelSize == nil) {
 		args = appendTensorParallelSize(args, &gpuCount)
 	}

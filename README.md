@@ -34,6 +34,7 @@
 
   <p>
     <a href="#quick-start">Quick Start</a> &bull;
+    <a href="#architecture">Architecture</a> &bull;
     <a href="#the-metal-agent">Metal Agent</a> &bull;
     <a href="#how-is-this-different">Why LLMKube?</a> &bull;
     <a href="#performance">Benchmarks</a> &bull;
@@ -57,11 +58,43 @@ Suddenly you're building an entire platform instead of shipping your product.
 
 ---
 
-## Getting Started Video
+## Architecture
 
-[![Getting Started with LLMKube](https://img.youtube.com/vi/dmKnkxvC1U8/maxresdefault.jpg)](https://youtu.be/dmKnkxvC1U8)
+Two cooperating processes. An in-cluster controller owns Kubernetes-side desired state. An out-of-cluster `metal-agent` (optional, only needed for Apple Silicon hosts) owns OS-level process supervision and registers Endpoints back into the cluster.
 
-*Watch: Deploy your first LLM on Kubernetes in 5 minutes*
+```mermaid
+%%{init: {'theme':'neutral','flowchart':{'curve':'linear'}}}%%
+flowchart TB
+    subgraph CLUSTER["Kubernetes cluster"]
+        direction LR
+        CTRL["LLMKube controller"]
+        CRD["Model · InferenceService<br/>(custom resources)"]
+        POD["Runtime pods<br/>llama.cpp · vLLM · TGI"]
+        CRD -- watched by --> CTRL
+        CTRL -- schedules --> POD
+    end
+
+    subgraph HOST["Apple Silicon host (optional)"]
+        direction LR
+        AGENT["metal-agent"]
+        NATIVE["llama-server · oMLX · Ollama<br/>(native processes)"]
+        AGENT -- supervises --> NATIVE
+    end
+
+    AGENT -- "registers Endpoints" --> CLUSTER
+```
+
+Same operator manages Linux/GPU pods and Apple Silicon hosts; both surface as `InferenceService` objects to `kubectl`.
+
+Setup guide for the metal-agent on Apple Silicon: [`deployment/macos/README.md`](deployment/macos/README.md).
+
+---
+
+## See it in action
+
+[![LLMKube quickstart cast](docs/site/images/quickstart-cast-poster.png)](https://llmkube.com/docs/getting-started)
+
+*Live asciinema cast on [llmkube.com/docs/getting-started](https://llmkube.com/docs/getting-started): deploy a model on a kind cluster, stream tokens from the OpenAI-compatible endpoint, and run the built-in throughput benchmark in under a minute.*
 
 ---
 
@@ -75,8 +108,8 @@ brew install defilantech/tap/llmkube
 helm repo add llmkube https://defilantech.github.io/LLMKube
 helm install llmkube llmkube/llmkube --namespace llmkube-system --create-namespace
 
-# Deploy a model (one command)
-llmkube deploy phi-4-mini --cpu 500m --memory 1Gi
+# Deploy a model (one command, uses catalog-tested defaults)
+llmkube deploy phi-4-mini
 
 # Query it (OpenAI-compatible)
 kubectl port-forward svc/phi-4-mini 8080:8080 &
@@ -373,6 +406,14 @@ We welcome contributions. See [CONTRIBUTING.md](CONTRIBUTING.md) for the full gu
 - K3s edge deployment
 - SafeTensors format support
 - Multi-node GPU sharding for 70B+ models
+
+### Contributors
+
+Thanks to the people who've shipped code, tests, and docs:
+
+<a href="https://github.com/defilantech/LLMKube/graphs/contributors">
+  <img src="https://contrib.rocks/image?repo=defilantech/LLMKube&excludeBot=true" alt="LLMKube contributors" />
+</a>
 
 ---
 

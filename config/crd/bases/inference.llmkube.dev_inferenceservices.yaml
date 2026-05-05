@@ -1711,6 +1711,15 @@ spec:
                     - xformers
                     - torch_sdpa
                     type: string
+                  cpuOffloadGB:
+                    description: |-
+                      CPUOffloadGB increases the GPU memory size. When set, passes
+                      --cpu-offload-gb to vLLM. Per-rank, so 4 on TP=2 means 4 GB of
+                      CPU RAM per GPU. Use when FP8 model weights don't fit VRAM.
+                      Throughput hit is 2-5x on the offloaded path.
+                    format: int32
+                    minimum: 0
+                    type: integer
                   dtype:
                     description: Dtype sets the model data type (auto, float16, bfloat16).
                     enum:
@@ -1740,6 +1749,14 @@ spec:
                       default is used (do not emit the flag).
                       Maps to vLLM --enable-prefix-caching flag.
                     type: boolean
+                  gpuMemoryUtilization:
+                    description: |-
+                      GPUMemoryUtilization controls how much GPU memory each stage can use.
+                      When set, passes --gpu-memory-utilization to vLLM. Range from 0.1 - 0.99
+                      and default unset (vLLM uses 0.90).
+                    maximum: 0.99
+                    minimum: 0.1
+                    type: number
                   hfTokenSecretRef:
                     description: HFTokenSecretRef references a Secret containing the
                       HuggingFace token.
