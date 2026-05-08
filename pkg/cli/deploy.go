@@ -37,7 +37,11 @@ import (
 	inferencev1alpha1 "github.com/defilantech/llmkube/api/v1alpha1"
 )
 
-const defaultGPUVendor = "nvidia"
+const (
+	defaultGPUVendor       = "nvidia"
+	runtimeOpenVINO        = "openvino"
+	imageOpenVINOModelServ = "openvino/model_server:latest"
+)
 
 type deployOptions struct {
 	name                string
@@ -180,7 +184,7 @@ Examples:
 		"Additional llama-server arguments (can specify multiple times)")
 
 	cmd.Flags().StringVar(&opts.runtime, "runtime", "llamacpp",
-		"Inference runtime backend (llamacpp, generic)")
+		"Inference runtime backend (llamacpp, openvino, generic)")
 	cmd.Flags().Int32Var(&opts.containerPort, "container-port", 0,
 		"Override the container port (default depends on runtime)")
 	cmd.Flags().BoolVar(&opts.skipModelInit, "skip-model-init", false,
@@ -202,7 +206,7 @@ Examples:
 	cmd.Flags().StringVar(&opts.cpu, "cpu", "2", "CPU request (e.g., '2' or '2000m')")
 	cmd.Flags().StringVar(&opts.memory, "memory", "4Gi", "Memory request (e.g., '4Gi')")
 	cmd.Flags().StringVar(&opts.image, "image", "",
-		"Custom llama.cpp server image. Default: server-cuda13 for GPU, server for CPU.\n"+
+		"Custom runtime image. Defaults: llama.cpp (server-cuda13/server), openvino (openvino/model_server:latest).\n"+
 			"Use this to override with an older image (e.g., ghcr.io/ggml-org/llama.cpp:server-cuda for CUDA 12).")
 
 	cmd.Flags().BoolVarP(&opts.wait, "wait", "w", true, "Wait for deployment to be ready")
@@ -555,6 +559,30 @@ func printDeploySummary(opts *deployOptions) {
 }
 
 func resolveAcceleratorAndImage(opts *deployOptions) {
+	if opts.runtime == runtimeOpenVINO {
+		if opts.accelerator == "" {
+			if opts.gpu {
+				opts.accelerator = acceleratorIntel
+				fmt.Printf("ℹ️  OpenVINO runtime: defaulting accelerator to %s for GPU workloads\n", opts.accelerator)
+			} else {
+				opts.accelerator = acceleratorCPU
+			}
+		}
+
+		if opts.gpu && opts.accelerator == acceleratorIntel {
+			if opts.gpuVendor == "" || opts.gpuVendor == defaultGPUVendor {
+				opts.gpuVendor = acceleratorIntel
+			}
+		}
+
+		if opts.image == "" {
+			opts.image = imageOpenVINOModelServ
+			fmt.Printf("ℹ️  OpenVINO runtime: using default image %s\n", opts.image)
+		}
+
+		return
+	}
+
 	if opts.gpu {
 		if opts.accelerator == "" {
 			if detectMetalSupport() {

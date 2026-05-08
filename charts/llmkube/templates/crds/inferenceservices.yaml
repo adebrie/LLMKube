@@ -421,7 +421,7 @@ spec:
                   ExtraArgs provides additional command-line arguments passed directly to the
                   runtime process. Use for flags not yet supported as typed CRD fields.
                   Arguments are appended after all other configured flags.
-                  Supported by the "llamacpp" and "vllm" runtimes. Ignored by others.
+                  Supported by the "llamacpp", "vllm", and "openvino" runtimes. Ignored by others.
                   Example: ["--seed", "42", "--log-disable"]
                 items:
                   type: string
@@ -441,6 +441,7 @@ spec:
                 description: |-
                   Image is the container image for the inference runtime.
                   For llamacpp runtime, defaults to ghcr.io/ggml-org/llama.cpp:server.
+                  For openvino runtime, defaults to openvino/model_server:latest.
                   For generic runtime, this field is required.
                 type: string
               imagePullSecrets:
@@ -514,6 +515,51 @@ spec:
                 additionalProperties:
                   type: string
                 description: NodeSelector for pod placement (e.g., specific node pools)
+                type: object
+              openvinoConfig:
+                description: |-
+                  OpenVINOConfig holds configuration for the OpenVINO runtime.
+                  Only used when Runtime is "openvino".
+                properties:
+                  hfTokenSecretRef:
+                    description: HFTokenSecretRef references a Secret containing the
+                      HuggingFace token.
+                    properties:
+                      key:
+                        description: The key of the secret to select from.  Must be
+                          a valid secret key.
+                        type: string
+                      name:
+                        default: ""
+                        description: |-
+                          Name of the referent.
+                          This field is effectively required, but due to backwards compatibility is
+                          allowed to be empty. Instances of this type with an empty value here are
+                          almost certainly wrong.
+                          More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#names
+                        type: string
+                      optional:
+                        description: Specify whether the Secret or its key must be
+                          defined
+                        type: boolean
+                    required:
+                    - key
+                    type: object
+                    x-kubernetes-map-type: atomic
+                  modelName:
+                    description: |-
+                      ModelName sets the served model name inside OpenVINO Model Server.
+                      If omitted, the controller uses the referenced Model name.
+                    type: string
+                  targetDevice:
+                    description: TargetDevice selects which device OpenVINO should
+                      use for inference.
+                    enum:
+                    - AUTO
+                    - CPU
+                    - GPU
+                    - NPU
+                    type: string
                 type: object
               parallelSlots:
                 description: |-
@@ -1363,11 +1409,13 @@ spec:
                   "personaplex": NVIDIA PersonaPlex (Moshi) speech-to-speech server.
                   "vllm": vLLM OpenAI-compatible server with PagedAttention.
                   "tgi": HuggingFace Text Generation Inference server.
+                  "openvino": Intel OpenVINO Model Server backend.
                 enum:
                 - llamacpp
                 - personaplex
                 - vllm
                 - tgi
+                - openvino
                 - generic
                 type: string
               runtimeClassName:

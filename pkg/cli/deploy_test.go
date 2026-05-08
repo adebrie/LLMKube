@@ -619,6 +619,17 @@ func TestResolveAcceleratorAndImage(t *testing.T) {
 			wantVendor: defaultGPUVendor,
 			wantImage:  "ghcr.io/ggml-org/llama.cpp:server",
 		},
+		{
+			name: "openvino runtime defaults to intel gpu and openvino image",
+			opts: &deployOptions{
+				runtime:   runtimeOpenVINO,
+				gpu:       true,
+				gpuVendor: defaultGPUVendor,
+			},
+			wantAccel:  "intel",
+			wantVendor: "intel",
+			wantImage:  imageOpenVINOModelServ,
+		},
 	}
 
 	for _, tt := range tests {

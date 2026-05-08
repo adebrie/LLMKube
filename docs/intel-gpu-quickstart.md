@@ -46,6 +46,21 @@ Notes:
 - `--accelerator intel` sets model hardware accelerator to Intel.
 - Default Intel runtime image is `ghcr.io/ggml-org/llama.cpp:server-intel`.
 
+### Option A2: CLI with OpenVINO Runtime
+
+```bash
+llmkube deploy phi-4-mini-openvino \
+  --runtime openvino \
+  --gpu \
+  --accelerator intel
+```
+
+Notes:
+
+- OpenVINO runtime default image is `openvino/model_server:latest`.
+- For OpenVINO deployments, the runtime reads the model location from `Model.spec.source` directly.
+- Use `openvinoConfig.targetDevice` in YAML to pin `CPU`, `GPU`, `NPU`, or `AUTO`.
+
 ### Option B: Kubernetes YAML
 
 ```yaml
@@ -91,6 +106,41 @@ Apply:
 
 ```bash
 kubectl apply -f intel-phi4.yaml
+```
+
+### Option C: Kubernetes YAML (OpenVINO Runtime)
+
+```yaml
+apiVersion: inference.llmkube.dev/v1alpha1
+kind: Model
+metadata:
+  name: intel-openvino-model
+  namespace: default
+spec:
+  source: /models/openvino/phi-4-mini
+  format: custom
+  hardware:
+    accelerator: intel
+    gpu:
+      enabled: true
+      count: 1
+      vendor: intel
+---
+apiVersion: inference.llmkube.dev/v1alpha1
+kind: InferenceService
+metadata:
+  name: intel-openvino-svc
+  namespace: default
+spec:
+  modelRef: intel-openvino-model
+  runtime: openvino
+  openvinoConfig:
+    modelName: phi4
+    targetDevice: GPU
+  resources:
+    gpu: 1
+    cpu: "2"
+    memory: "4Gi"
 ```
 
 ## Step 4: Verify Scheduling and Offload

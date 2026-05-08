@@ -33,7 +33,8 @@ type InferenceServiceSpec struct {
 	// "personaplex": NVIDIA PersonaPlex (Moshi) speech-to-speech server.
 	// "vllm": vLLM OpenAI-compatible server with PagedAttention.
 	// "tgi": HuggingFace Text Generation Inference server.
-	// +kubebuilder:validation:Enum=llamacpp;personaplex;vllm;tgi;generic
+	// "openvino": Intel OpenVINO Model Server backend.
+	// +kubebuilder:validation:Enum=llamacpp;personaplex;vllm;tgi;openvino;generic
 	// +kubebuilder:default=llamacpp
 	// +optional
 	Runtime string `json:"runtime,omitempty"`
@@ -55,6 +56,7 @@ type InferenceServiceSpec struct {
 
 	// Image is the container image for the inference runtime.
 	// For llamacpp runtime, defaults to ghcr.io/ggml-org/llama.cpp:server.
+	// For openvino runtime, defaults to openvino/model_server:latest.
 	// For generic runtime, this field is required.
 	// +optional
 	Image string `json:"image,omitempty"`
@@ -248,7 +250,7 @@ type InferenceServiceSpec struct {
 	// ExtraArgs provides additional command-line arguments passed directly to the
 	// runtime process. Use for flags not yet supported as typed CRD fields.
 	// Arguments are appended after all other configured flags.
-	// Supported by the "llamacpp" and "vllm" runtimes. Ignored by others.
+	// Supported by the "llamacpp", "vllm", and "openvino" runtimes. Ignored by others.
 	// Example: ["--seed", "42", "--log-disable"]
 	// +optional
 	ExtraArgs []string `json:"extraArgs,omitempty"`
@@ -300,6 +302,11 @@ type InferenceServiceSpec struct {
 	// Only used when Runtime is "tgi".
 	// +optional
 	TGIConfig *TGIConfig `json:"tgiConfig,omitempty"`
+
+	// OpenVINOConfig holds configuration for the OpenVINO runtime.
+	// Only used when Runtime is "openvino".
+	// +optional
+	OpenVINOConfig *OpenVINOConfig `json:"openvinoConfig,omitempty"`
 
 	// ImagePullSecrets for pulling container images from private registries.
 	// +optional
@@ -624,6 +631,23 @@ type TGIConfig struct {
 	// +kubebuilder:validation:Enum=float16;bfloat16
 	// +optional
 	Dtype string `json:"dtype,omitempty"`
+
+	// HFTokenSecretRef references a Secret containing the HuggingFace token.
+	// +optional
+	HFTokenSecretRef *corev1.SecretKeySelector `json:"hfTokenSecretRef,omitempty"`
+}
+
+// OpenVINOConfig holds configuration for the Intel OpenVINO Model Server runtime.
+type OpenVINOConfig struct {
+	// ModelName sets the served model name inside OpenVINO Model Server.
+	// If omitted, the controller uses the referenced Model name.
+	// +optional
+	ModelName string `json:"modelName,omitempty"`
+
+	// TargetDevice selects which device OpenVINO should use for inference.
+	// +kubebuilder:validation:Enum=AUTO;CPU;GPU;NPU
+	// +optional
+	TargetDevice string `json:"targetDevice,omitempty"`
 
 	// HFTokenSecretRef references a Secret containing the HuggingFace token.
 	// +optional

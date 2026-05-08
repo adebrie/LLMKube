@@ -256,7 +256,7 @@ Consistent ~53 tok/s across 3-8B models with automatic layer sharding. See [v0.4
 
 **Inference:**
 - Kubernetes-native CRDs (`Model` + `InferenceService`)
-- Multiple runtimes: llama.cpp (GGUF), vLLM (HuggingFace + safetensors), TGI, Ollama
+- Multiple runtimes: llama.cpp (GGUF), vLLM (HuggingFace + safetensors), TGI, OpenVINO, Ollama
 - Automatic model download from HuggingFace, HTTP, or PVC (S3 planned)
 - Persistent model cache, download once, deploy instantly ([guide](docs/MODEL-CACHE.md))
 - OpenAI-compatible `/v1/chat/completions` API
